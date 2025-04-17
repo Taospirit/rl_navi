@@ -152,10 +152,16 @@ class Simu:
         self.goal_radius = config['robot']['goal']['radius']
         self.done = False
         self.done_flag = 0
+        self.reach_goal_cnt = 0
+        dx, dy, _ = self.calc_goal_info()
+        self.min_dist_to_goal = np.hypot(dx, dy)
 
     def reset(self):
         self.robot_pos = list(self.config['robot']['pos'])
         self.robot_angle = self.config['robot'].get('angle', random.uniform(-180, 180))
+        dx, dy, _ = self.calc_goal_info()
+        self.min_dist_to_goal = np.hypot(dx, dy)
+        self.reach_goal_cnt = 0
 
     def update(self, move_param):
         assert len(move_param) == 2, f"move param only support [move, rotate]"
@@ -164,6 +170,7 @@ class Simu:
             return move - 1, rotate - 1
         self.old_pos = self.robot_pos.copy()
         move, rotate = act_map(*move_param)
+        move = max(move, 0)
 
         self.robot_angle = (self.robot_angle + rotate * self.rotate_speed) % 360
         rad = math.radians(self.robot_angle)
@@ -206,11 +213,17 @@ class Simu:
         laser_dists = laser_dists[:self.laser_size]
         return laser_hits, laser_dists
     
-    # def get_reward(self, done, done_flag):
-    #     return 0
-    
     def get_laser_distances(self):
         return self.laser_dists
+    
+    def calc_goal_info(self):
+        """计算机器人到目标点的距离"""
+        robot_pos = self.robot_pos
+        goal_pos = self.goal_pos
+        dx = goal_pos[0] - robot_pos[0]
+        dy = goal_pos[1] - robot_pos[1]
+        angle = np.arctan2(dy, dx)
+        return dx, dy, angle
 
     def get_done(self):
         done = False
@@ -223,10 +236,11 @@ class Simu:
             done_flag = -2
         elif self.check_goal(self.robot_pos, self.robot_radius, 
                             self.goal_pos, self.goal_radius):
-            done = True
-            done_flag = 1
-            if done:
-                self.reset()
+            self.reach_goal_cnt += 1
+            if self.reach_goal_cnt > 1:
+                done = True
+            else:
+                done_flag = 1
         return done, done_flag
 
     def check_collision(self, pos, radius):
@@ -250,7 +264,7 @@ class Simu:
     def check_goal(self, pos, pos_radius, goal_pos, goal_radius):
         cx, cy = goal_pos
         dist = math.sqrt((pos[0] - cx) ** 2 + (pos[1] - cy) ** 2)
-        return dist < goal_radius + pos_radius
+        return dist <= goal_radius + pos_radius
     
     def get_info(self):
         return 0
@@ -283,18 +297,6 @@ class RobotEnv:
         if self.need_render:
             self.screen = pygame.display.set_mode(config['map']['size'])
             self.clock = pygame.time.Clock()
-        # Track minimum distance to goal
-        dx, dy, _ = self.calc_goal_info()
-        self.min_dist_to_goal = np.hypot(dx, dy)
-
-    def calc_goal_info(self):
-        """计算机器人到目标点的距离"""
-        robot_pos = self.simu.robot_pos
-        goal_pos = self.simu.goal_pos
-        dx = goal_pos[0] - robot_pos[0]
-        dy = goal_pos[1] - robot_pos[1]
-        angle = np.arctan2(dy, dx)
-        return dx, dy, angle
 
     def reset(self):
         """ 重置环境，重新初始化机器人位置 """
@@ -305,7 +307,6 @@ class RobotEnv:
         """ 执行一步机器人动作，并返回观察结果和是否完成 """
         self.simu.update(move_param)
         done, done_flag = self.simu.get_done()
-        # reward = self.simu.get_reward(done, done_flag)
         reward = self.get_reward(done, done_flag)
         info = self.simu.get_info()
         if done:
@@ -318,7 +319,7 @@ class RobotEnv:
         # 获取机器人位置和角度
         robot_angle = self.simu.robot_angle        
         # 计算机器人和终点之间的差值
-        dx, dy, angle = self.calc_goal_info()
+        dx, dy, angle = self.simu.calc_goal_info()
         dist = np.hypot(dx, dy)
     
         # 将机器人角度从度转换为弧度
@@ -347,23 +348,22 @@ class RobotEnv:
         return obs
 
     def get_reward(self, done, done_flag):
+        if done_flag == 1:  # Reached goal
+            return 10
         # Terminal rewards
         if done:
-            if done_flag == 1:  # Reached goal
-                return 10
-            elif done_flag == -1:  # Collision
+            if done_flag == -1:  # Collision
                 return -10
             elif done_flag == -2: # Out of range
                 return -10
         
         # Distance-based reward
-        dx, dy, _ = self.calc_goal_info()
+        dx, dy, _ = self.simu.calc_goal_info()
         curr_dist = np.hypot(dx, dy)
-        
         # Update minimum distance if we're closer than before
-        if curr_dist < self.min_dist_to_goal:
-            reward = (self.min_dist_to_goal - curr_dist) / 20  # Normalize the reward
-            self.min_dist_to_goal = curr_dist
+        if curr_dist < self.simu.min_dist_to_goal:
+            reward = (self.simu.min_dist_to_goal - curr_dist) / 20  # Normalize the reward
+            self.simu.min_dist_to_goal = curr_dist
             return reward
         
         return 0
@@ -385,4 +385,4 @@ class RobotEnv:
     
     @property
     def action_dim(self):
-        return [2, 3]
+        return [3, 3]

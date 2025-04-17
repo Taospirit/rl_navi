@@ -54,7 +54,7 @@ class PPO:
         self.clip_ratio = clip_ratio
         self.epochs = epochs
         self.batch_size = batch_size
-        self.entropy_coef = 1.0
+        self.entropy_coef = 0.0
         self.value_coef = value_coef
 
         self.actor_optim = optim.Adam(actor.parameters(), lr=pi_lr)
