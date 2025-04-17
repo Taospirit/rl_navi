@@ -2,6 +2,8 @@ import pygame
 import math
 import numpy as np
 import random
+import json
+import os
 from shapely.geometry import Point, Polygon
 
 # -------------------------------
@@ -33,6 +35,15 @@ def is_point_blocked(point, obstacles):
         if math.hypot(point[0] - cx, point[1] - cy) <= r:
             return True
     return False
+
+def load_config(config_path):
+    file_ext = config_path.split('.')[-1]
+    if file_ext == "json":
+        with open(config_path) as f:
+            config = json.load(f)
+    else:
+        raise ValueError(f"Invalid config file extension: {file_ext}")
+    return config
 
 # class Robot:
 #     def __init__(self, robot_conf):
@@ -129,7 +140,7 @@ class Simu:
         self.laser_interval = laser_cfg['interval']
         self.laser_range = laser_cfg['max_range']
         self.laser_size = int(self.laser_range / self.laser_interval) + 1
-        self.laser_dists = []
+        self.laser_dists = [self.laser_range for _ in range(self.laser_size)]
         # map info init 
         map_conf = config['map']
         self.map_size = map_conf['size']
@@ -148,8 +159,11 @@ class Simu:
 
     def update(self, move_param):
         assert len(move_param) == 2, f"move param only support [move, rotate]"
+        def act_map(move, rotate):
+            # map act from [0, 1, 2] -> [-1, 0, 1]
+            return move - 1, rotate - 1
         self.old_pos = self.robot_pos.copy()
-        move, rotate = move_param
+        move, rotate = act_map(*move_param)
 
         self.robot_angle = (self.robot_angle + rotate * self.rotate_speed) % 360
         rad = math.radians(self.robot_angle)
@@ -192,8 +206,8 @@ class Simu:
         laser_dists = laser_dists[:self.laser_size]
         return laser_hits, laser_dists
     
-    def get_reward(self, done, done_flag):
-        return 0
+    # def get_reward(self, done, done_flag):
+    #     return 0
     
     def get_laser_distances(self):
         return self.laser_dists
@@ -261,38 +275,98 @@ class Simu:
 
 
 class RobotEnv:
+    def calc_goal_info(self):
+        """计算机器人到目标点的距离"""
+        robot_pos = self.simu.robot_pos
+        goal_pos = self.simu.goal_pos
+        dx = goal_pos[0] - robot_pos[0]
+        dy = goal_pos[1] - robot_pos[1]
+        angle = np.arctan2(dy, dx)
+        return dx, dy, angle
+
     def __init__(self, config, render=False):
         pygame.init()
-        self.config = config
+        config = load_config(config)
         self.simu = Simu(config)
         self.need_render = render
         if self.need_render:
             self.screen = pygame.display.set_mode(config['map']['size'])
             self.clock = pygame.time.Clock()
+        # Track minimum distance to goal
+        dx, dy, _ = self.calc_goal_info()
+        self.min_dist_to_goal = np.hypot(dx, dy)
 
     def reset(self):
         """ 重置环境，重新初始化机器人位置 """
         self.simu.reset()
-        return self.get_observation()
+        return self.get_obs()
 
     def step(self, move_param):
         """ 执行一步机器人动作，并返回观察结果和是否完成 """
         self.simu.update(move_param)
         done, done_flag = self.simu.get_done()
-        reward = self.simu.get_reward(done, done_flag)
+        # reward = self.simu.get_reward(done, done_flag)
+        reward = self.get_reward(done, done_flag)
         info = self.simu.get_info()
         if done:
             self.reset()
-        next_obs = self.get_observation()
+        next_obs = self.get_obs()
         return next_obs, reward, done, info
 
-    def get_observation(self):
+    def get_obs(self):
         """ 获取当前的环境观测 """
-        return {
-            'position': self.simu.robot_pos,
-            'angle': self.simu.robot_angle,
-            'laser': self.simu.get_laser_distances()
-        }
+        # 获取机器人位置和角度
+        robot_angle = self.simu.robot_angle        
+        # 计算机器人和终点之间的差值
+        dx, dy, angle = self.calc_goal_info()
+        dist = np.hypot(dx, dy)
+    
+        # 将机器人角度从度转换为弧度
+        robot_angle_rad = np.deg2rad(robot_angle)
+        diff_angle = angle - robot_angle_rad
+        # 将角度归一化到 [-pi, pi]
+        diff_angle = np.arctan2(np.sin(diff_angle), np.cos(diff_angle))
+        
+        # 获取激光雷达数据并归一化
+        laser = np.array(self.simu.laser_dists) / self.simu.laser_range
+        
+        # 归一化相对位置和距离
+        map_size = self.simu.map_size
+        dx = dx / map_size[0]  # 使用地图宽度归一化
+        dy = dy / map_size[1]  # 使用地图高度归一化
+        dist = dist / np.sqrt(map_size[0]**2 + map_size[1]**2)  # 使用地图对角线长度归一化
+        diff_angle = diff_angle / np.pi  # 归一化到 [-1, 1]
+        
+        # 将所有观测组合成numpy数组
+        obs = np.concatenate([
+            laser,                       # laser readings (n) [0,1]
+            [dx, dy],                    # dx, dy (2) [-1,1]
+            [dist],                      # distance to goal (1) [0,1]
+            [diff_angle],                # angle difference (1) [-1,1]
+        ])
+        return obs
+
+    def get_reward(self, done, done_flag):
+        # Terminal rewards
+        if done:
+            if done_flag == 1:  # Reached goal
+                return 10
+            elif done_flag == -1:  # Collision
+                return -1
+            elif done_flag == -2: # Out of range
+                return -1
+        
+        # Distance-based reward
+        dx, dy, _ = self.calc_goal_info()
+        curr_dist = np.hypot(dx, dy)
+        
+        # Update minimum distance if we're closer than before
+        if curr_dist < self.min_dist_to_goal:
+            reward = (self.min_dist_to_goal - curr_dist) / 10  # Normalize the reward
+            self.min_dist_to_goal = curr_dist
+            return reward
+        
+        return 0
 
     def render(self):
         """ 渲染环境状态 """
@@ -303,3 +377,12 @@ class RobotEnv:
     def close(self):
         """ 关闭环境，清理pygame """
         pygame.quit()
+
+    @property
+    def state_dim(self):
+        obs = self.get_obs()
+        return obs.shape[0]
+    
+    @property
+    def action_dim(self):
+        return [2, 3]
