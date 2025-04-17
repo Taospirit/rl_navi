@@ -153,6 +153,7 @@ class Simu:
         self.done = False
         self.done_flag = 0
         self.reach_goal_cnt = 0
+        self.step_cnt = 0
         dx, dy, _ = self.calc_goal_info()
         self.min_dist_to_goal = np.hypot(dx, dy)
 
@@ -162,6 +163,7 @@ class Simu:
         dx, dy, _ = self.calc_goal_info()
         self.min_dist_to_goal = np.hypot(dx, dy)
         self.reach_goal_cnt = 0
+        self.step_cnt = 0
 
     def update(self, move_param):
         assert len(move_param) == 2, f"move param only support [move, rotate]"
@@ -181,6 +183,7 @@ class Simu:
 
         obs = self.config["map"]["obstacles"]
         self.laser_hits, self.laser_dists = self.laser_scan(obs)
+        self.step_cnt += 1
 
     def laser_scan(self, obstacles):
         robot_pos = self.robot_pos
@@ -228,10 +231,13 @@ class Simu:
     def get_done(self):
         done = False
         done_flag = 0
+        if self.step_cnt > 3000:
+            done = True
+            done_flag = 0
         if self.check_collision(self.robot_pos, self.robot_radius):
             done = True
             done_flag = -1
-        elif self.check_outrange(self.robot_pos):
+        elif self.check_outrange(self.robot_pos, self.robot_radius):
             done = True
             done_flag = -2
         elif self.check_goal(self.robot_pos, self.robot_radius, 
@@ -256,9 +262,10 @@ class Simu:
                 return True
         return False
     
-    def check_outrange(self, pos):
+    def check_outrange(self, pos, radius=0):
         return not (
-            pos[0] > 0 and pos[0] < self.map_size[0] and pos[1] > 0 and pos[1] < self.map_size[1]
+            pos[0] > radius and pos[0] < self.map_size[0] - radius \
+            and pos[1] > radius and pos[1] < self.map_size[1] - radius
         )
 
     def check_goal(self, pos, pos_radius, goal_pos, goal_radius):
@@ -326,28 +333,31 @@ class RobotEnv:
         robot_angle_rad = np.deg2rad(robot_angle)
         diff_angle = angle - robot_angle_rad
         # 将角度归一化到 [-pi, pi]
-        diff_angle = np.arctan2(np.sin(diff_angle), np.cos(diff_angle))
+        rad_diff = np.arctan2(np.sin(diff_angle), np.cos(diff_angle))
         
         # 获取激光雷达数据并归一化
         laser = np.array(self.simu.laser_dists) / self.simu.laser_range
         
         # 归一化相对位置和距离
         map_size = self.simu.map_size
-        dx = dx / map_size[0]  # 使用地图宽度归一化
-        dy = dy / map_size[1]  # 使用地图高度归一化
-        dist = dist / np.sqrt(map_size[0]**2 + map_size[1]**2)  # 使用地图对角线长度归一化
-        diff_angle = diff_angle / np.pi  # 归一化到 [-1, 1]
+        dx /= map_size[0]  # 使用地图宽度归一化
+        dy /= map_size[1]  # 使用地图高度归一化
+        dist /= np.hypot(map_size[0], map_size[1])  # 使用地图对角线长度归一化
+        rad_diff /= np.pi  # 归一化到 [-1, 1]
+        rad_sin = np.sin(rad_diff)
+        rad_cos = np.cos(rad_diff)
         
         # 将所有观测组合成numpy数组
         obs = np.concatenate([
             laser,                       # laser readings (n) [0,1]
             [dx, dy],                    # dx, dy (2) [-1,1]
             [dist],                      # distance to goal (1) [0,1]
-            [diff_angle],                # angle difference (1) [-1,1]
+            [rad_diff, rad_sin, rad_cos],                # angle difference (1) [-1,1]
         ])
         return obs
 
     def get_reward(self, done, done_flag):
+        rewards = 0
         # Terminal rewards       
         if done:
             if done_flag == -1:  # Collision
@@ -365,9 +375,13 @@ class RobotEnv:
         if curr_dist < self.simu.min_dist_to_goal:
             reward = (self.simu.min_dist_to_goal - curr_dist) / 20  # Normalize the reward
             self.simu.min_dist_to_goal = curr_dist
-            return reward
+            rewards += reward
+
+        # time penalty
+        time_penalty = -0.01
+        rewards += time_penalty
         
-        return 0
+        return rewards
 
     def render(self):
         """ 渲染环境状态 """
