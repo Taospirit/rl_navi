@@ -275,15 +275,6 @@ class Simu:
 
 
 class RobotEnv:
-    def calc_goal_info(self):
-        """计算机器人到目标点的距离"""
-        robot_pos = self.simu.robot_pos
-        goal_pos = self.simu.goal_pos
-        dx = goal_pos[0] - robot_pos[0]
-        dy = goal_pos[1] - robot_pos[1]
-        angle = np.arctan2(dy, dx)
-        return dx, dy, angle
-
     def __init__(self, config, render=False):
         pygame.init()
         config = load_config(config)
@@ -295,6 +286,15 @@ class RobotEnv:
         # Track minimum distance to goal
         dx, dy, _ = self.calc_goal_info()
         self.min_dist_to_goal = np.hypot(dx, dy)
+
+    def calc_goal_info(self):
+        """计算机器人到目标点的距离"""
+        robot_pos = self.simu.robot_pos
+        goal_pos = self.simu.goal_pos
+        dx = goal_pos[0] - robot_pos[0]
+        dy = goal_pos[1] - robot_pos[1]
+        angle = np.arctan2(dy, dx)
+        return dx, dy, angle
 
     def reset(self):
         """ 重置环境，重新初始化机器人位置 """
