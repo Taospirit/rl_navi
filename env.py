@@ -352,9 +352,9 @@ class RobotEnv:
             if done_flag == 1:  # Reached goal
                 return 10
             elif done_flag == -1:  # Collision
-                return -1
+                return -10
             elif done_flag == -2: # Out of range
-                return -1
+                return -10
         
         # Distance-based reward
         dx, dy, _ = self.calc_goal_info()
@@ -362,7 +362,7 @@ class RobotEnv:
         
         # Update minimum distance if we're closer than before
         if curr_dist < self.min_dist_to_goal:
-            reward = (self.min_dist_to_goal - curr_dist) / 10  # Normalize the reward
+            reward = (self.min_dist_to_goal - curr_dist) / 20  # Normalize the reward
             self.min_dist_to_goal = curr_dist
             return reward
         
