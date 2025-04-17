@@ -60,6 +60,23 @@ class PPO:
         self.actor_optim = optim.Adam(actor.parameters(), lr=pi_lr)
         self.critic_optim = optim.Adam(critic.parameters(), lr=v_lr)
 
+    def save_model(self, path):
+        torch.save({
+            'actor_state_dict': self.actor.state_dict(),
+            'critic_state_dict': self.critic.state_dict(),
+            'actor_optim_state_dict': self.actor_optim.state_dict(),
+            'critic_optim_state_dict': self.critic_optim.state_dict(),
+        }, path)
+        print(f"模型已保存到 {path}")
+
+    def load_model(self, path):
+        checkpoint = torch.load(path)
+        self.actor.load_state_dict(checkpoint['actor_state_dict'])
+        self.critic.load_state_dict(checkpoint['critic_state_dict'])
+        self.actor_optim.load_state_dict(checkpoint['actor_optim_state_dict'])
+        self.critic_optim.load_state_dict(checkpoint['critic_optim_state_dict'])
+        print(f"已从 {path} 加载模型参数")
+
     def data_size(self):
         return self.buffer.memory.maxlen
 

@@ -47,6 +47,10 @@ while total_steps < max_timesteps:
         # print(obs, act, rew, done, log_prob)
         rews += rew
         step += 1
+
+        if total_steps % 10000 == 0:
+            save_path = f'saves/save_model_{total_steps}.pth'
+            agent.save_model(save_path)
         if done:
             break
         if need_render:

@@ -366,7 +366,7 @@ class RobotEnv:
                 return -10
 
         if done_flag == 1:  # Reached goal
-            return 10
+            return 100
         
         # Distance-based reward
         dx, dy, _ = self.simu.calc_goal_info()
