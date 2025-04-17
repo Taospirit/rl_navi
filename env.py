@@ -348,14 +348,15 @@ class RobotEnv:
         return obs
 
     def get_reward(self, done, done_flag):
-        if done_flag == 1:  # Reached goal
-            return 10
-        # Terminal rewards
+        # Terminal rewards       
         if done:
             if done_flag == -1:  # Collision
                 return -10
             elif done_flag == -2: # Out of range
                 return -10
+
+        if done_flag == 1:  # Reached goal
+            return 10
         
         # Distance-based reward
         dx, dy, _ = self.simu.calc_goal_info()

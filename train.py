@@ -16,7 +16,7 @@ torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
 env_config = 'configs/env_config.json'
-need_render = 1
+need_render = 0
 env = RobotEnv(env_config, render=need_render)
 
 actor = MultiDiscreteActor(env.state_dim, env.action_dim)
@@ -43,12 +43,12 @@ while total_steps < max_timesteps:
             "done": done,
             "log_prob": log_prob
         })
+        obs = next_obs
         # print(obs, act, rew, done, log_prob)
         rews += rew
         step += 1
         if done:
             break
-        obs = next_obs
         if need_render:
             env.render()
     if agent.ready():
