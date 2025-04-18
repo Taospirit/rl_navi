@@ -64,10 +64,7 @@ class PPO:
 
     def save_model(self, path):
         dir_path = osp.dirname(path)
-        if osp.exists(dir_path):
-            import shutil
-            shutil.rmtree(dir_path)
-        os.makedirs(dir_path)
+        os.makedirs(dir_path, exist_ok=True)
 
         torch.save({
             'actor_state_dict': self.actor.state_dict(),

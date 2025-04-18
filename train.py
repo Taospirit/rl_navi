@@ -11,16 +11,18 @@ from env import RobotEnv
 
 now = datetime.now()
 time_format = now.strftime("%m%d-%H%M%S")
+os.makedirs('saves', exist_ok=True)
+model_save_dir = f'saves/saves-{time_format}'
+log_save_file = f"saves/train-{time_format}.log"
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s | %(levelname)s | %(message)s',
     handlers=[
-        logging.FileHandler(f"train-{time_format}.log"),  # 保存到文件
+        logging.FileHandler(log_save_file),  # 保存到文件
         logging.StreamHandler()          # 同时输出到控制台
     ]
 )
-save_dir = f'saves-{time_format}'
-
+logging.info(f'log file: {log_save_file}, save dir: {model_save_dir}')
 
 train_seed = 42
 max_timesteps = int(1e8)
@@ -62,7 +64,7 @@ while total_steps < max_timesteps:
         step += 1
 
         if total_steps % 10000 == 0:
-            save_path = f'{save_dir}/save_model_{total_steps}.pth'
+            save_path = f'{model_save_dir}/save_model_{total_steps}.pth'
             agent.save_model(save_path)
 
         if env.get_step_cnt() > 5000:
