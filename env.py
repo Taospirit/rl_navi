@@ -99,8 +99,8 @@ class Simu:
 
     def reset(self):
         if self.reset_mode == "rand":
-            self.robot_pos = self.get_valid_pos(self.robot_radius)
-            self.robot_angle = random.uniform(-180, 180)
+            # self.robot_pos = self.get_valid_pos(self.robot_radius)
+            # self.robot_angle = random.uniform(-180, 180)
             self.goal_pos = self.get_valid_pos(self.goal_radius)
         else:
             self.robot_pos = list(self.config['robot']['pos'])
