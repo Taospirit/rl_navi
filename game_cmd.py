@@ -29,9 +29,9 @@ while running:
 
     act = [move + 1, rotate + 1]
     next_obs, reward, done, info = env.step(act)
+    print(rews, done, info)
     rews += reward
     if need_render:
         env.render()
     if done:
-        print(rews, done, info)
         rews = 0

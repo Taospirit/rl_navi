@@ -9,6 +9,15 @@ from shapely.geometry import Point, Polygon
 # -------------------------------
 # 工具函数
 # -------------------------------
+def load_config(config_path):
+    file_ext = config_path.split('.')[-1]
+    if file_ext == "json":
+        with open(config_path) as f:
+            config = json.load(f)
+    else:
+        raise ValueError(f"Invalid config file extension: {file_ext}")
+    return config
+
 def point_in_polygon(point, polygon):
     x, y = point
     n = len(polygon)
@@ -26,106 +35,35 @@ def point_in_polygon(point, polygon):
         px1, py1 = px2, py2
     return inside
 
-def is_point_blocked(point, obstacles):
-    if any(point_in_polygon(point, poly) for poly in obstacles["polygons"]):
-        return True
-    for circ in obstacles["circles"]:
-        cx, cy = circ["pos"]
-        r = circ["radius"]
-        if math.hypot(point[0] - cx, point[1] - cy) <= r:
+def check_outrange(pos, map_size, radius=0):
+    return not (
+        pos[0] > radius and pos[0] < map_size[0] - radius \
+        and pos[1] > radius and pos[1] < map_size[1] - radius
+    )
+
+def check_overlap(p1, r1, p2, r2):
+    d = np.hypot(p1[0] - p2[0], p1[1] - p2[1])
+    return d < r1 + r2
+
+def check_blocked(point, radius, 
+                  obs_polygons=[], obs_circles=[]):
+    for poly in obs_polygons:
+        if radius != 0:
+            robot_shape = Point(point).buffer(radius)
+            flag = robot_shape.intersects(Polygon(poly))
+        else:
+            flag = point_in_polygon(point, poly)
+        if flag:
+            return True
+    px, py = point
+    for circle in obs_circles:
+        cx, cy = circle["pos"]
+        r = circle["radius"]
+        if math.hypot(px - cx, py - cy) <= r + radius:
             return True
     return False
 
-def load_config(config_path):
-    file_ext = config_path.split('.')[-1]
-    if file_ext == "json":
-        with open(config_path) as f:
-            config = json.load(f)
-    else:
-        raise ValueError(f"Invalid config file extension: {file_ext}")
-    return config
 
-# class Robot:
-#     def __init__(self, robot_conf):
-#         self.conf = robot_conf
-#         self.pos = robot_conf["pos"]
-#         self.radius = robot_conf["radius"]
-#         self.angle = robot_conf.get("angle", random.uniform(-180, 180))
-#         self.move_speed = 3
-#         self.rotate_speed = 5
-#         laser_conf = robot_conf["laser"]
-#         self.laser_fov = laser_conf["fov"]
-#         self.laser_interval = laser_conf["interval"]
-#         self.laser_range = laser_conf["max_range"]
-#         self.laser_size = int(self.laser_range / self.laser_interval) + 1
-#         self.laser_dists = []
-#         goal_conf = robot_conf["goal"]
-#         self.goal_pos = goal_conf["pos"]
-#         self.goal_radius = goal_conf["radius"]
-
-#     def move_step(self, move_param, obstacles, map_size):
-#         assert len(move_param) == 2, f"move param only support [move, rotate]"
-#         self.old_pos = self.pos.copy()
-#         move, rotate = move_param
-#         print(f'===> move_param {move_param}, angle {self.angle}')
-
-#         self.angle = (self.angle + rotate * self.rotate_speed) % 360
-#         rad = math.radians(self.angle)
-#         dx = move * self.move_speed * math.cos(rad)
-#         dy = -1 * move * self.move_speed * math.sin(rad)
-#         self.pos[0] += dx
-#         self.pos[1] += dy
-
-#         self.laser_hits, self.laser_dists = self.laser_scan(obstacles, map_size)
-
-#     def laser_scan(self, obstacles, map_size):
-#         robot_pos = self.pos
-#         robot_angle = self.angle
-#         laser_hits = []
-#         laser_dists = []
-#         start_angle = robot_angle - self.laser_fov / 2
-#         end_angle = robot_angle + self.laser_fov / 2
-
-#         for deg in range(int(start_angle), int(end_angle) + 1, self.laser_interval):
-#             rad = math.radians(deg)
-#             for d in range(0, self.laser_range, 2):
-#                 x = robot_pos[0] + math.cos(rad) * d
-#                 y = robot_pos[1] - math.sin(rad) * d
-#                 if is_point_blocked([x, y], obstacles):
-#                     laser_hits.append((x, y))
-#                     laser_dists.append(d)
-#                     break
-#                 if self.check_outrange([x, y], map_size):
-#                     laser_hits.append((x, y))
-#                     laser_dists.append(d)
-#                     break
-#             else:
-#                 x = robot_pos[0] + math.cos(rad) * self.laser_range
-#                 y = robot_pos[1] - math.sin(rad) * self.laser_range
-#                 laser_hits.append((x, y))
-#                 laser_dists.append(self.laser_range)
-
-#         laser_dists += [self.laser_range] * max(self.laser_size - len(laser_dists), 0)
-#         laser_dists = laser_dists[:self.laser_size]
-#         return laser_hits, laser_dists
-
-#     def reset(self, rand=False):
-#         if rand:
-#             pass
-#         else:
-#             self.pos = self.conf["pos"]
-#             self.radius = self.conf["radius"]
-#             self.angle = 90
-#             # self.angle = self.conf.get("angle", random.uniform(-180, 180))
-
-#     def get_laser(self):
-#         return self.laser_dists
-    
-#     def check_outrange(self, pos, map_size):
-#         return not (
-#             pos[0] > 0 and pos[0] < map_size[0] and pos[1] > 0 and pos[1] < map_size[1]
-#         )
-    
 class Simu:
     def __init__(self, config):
         self.config = config
@@ -135,6 +73,8 @@ class Simu:
         self.robot_angle = 0
         self.move_speed = 3
         self.rotate_speed = 5
+        self.reset_mode = config['robot'].get('reset_mode', 'norm')
+        # laser init
         laser_cfg = config['robot']['laser']
         self.laser_fov = laser_cfg['fov']
         self.laser_interval = laser_cfg['interval']
@@ -147,30 +87,36 @@ class Simu:
         self.obs_polygons = map_conf['obstacles']['polygons']
         self.obs_circles = map_conf['obstacles']['circles']
         self.obstacles = map_conf['obstacles']
-        # self.goal = self._load_goal(map_conf['goal'])
+
         self.goal_pos = config['robot']['goal']['pos']
         self.goal_radius = config['robot']['goal']['radius']
-        self.done = False
-        self.done_flag = 0
         self.reach_goal_cnt = 0
         self.step_cnt = 0
-        dx, dy, _ = self.calc_goal_info()
+        dx, dy = self.calc_goal_info()
         self.min_dist_to_goal = np.hypot(dx, dy)
+        self.last_pos = self.robot_pos
+        self.last_angle = self.robot_angle
 
     def reset(self):
-        self.robot_pos = list(self.config['robot']['pos'])
-        self.robot_angle = self.config['robot'].get('angle', random.uniform(-180, 180))
-        dx, dy, _ = self.calc_goal_info()
+        if self.reset_mode == "rand":
+            self.robot_pos = self.get_valid_pos(self.robot_radius)
+            self.robot_angle = random.uniform(-180, 180)
+            self.goal_pos = self.get_valid_pos(self.goal_radius)
+        else:
+            self.robot_pos = list(self.config['robot']['pos'])
+            self.robot_angle = 0
+            self.goal_pos = self.config['robot']['goal']['pos']
+
+        dx, dy = self.calc_goal_info()
         self.min_dist_to_goal = np.hypot(dx, dy)
         self.reach_goal_cnt = 0
         self.step_cnt = 0
 
     def update(self, move_param):
         assert len(move_param) == 2, f"move param only support [move, rotate]"
-        def act_map(move, rotate):
-            # map act from [0, 1, 2] -> [-1, 0, 1]
-            return move - 1, rotate - 1
-        self.old_pos = self.robot_pos.copy()
+        self.last_pos = self.robot_pos.copy()
+        self.last_angle = self.robot_angle
+        act_map = lambda m, r: (m -1, r - 1)
         move, rotate = act_map(*move_param)
         move = max(move, 0)
 
@@ -180,12 +126,19 @@ class Simu:
         dy = -1 * move * self.move_speed * math.sin(rad)
         self.robot_pos[0] += dx
         self.robot_pos[1] += dy
+        
+        done, done_flag = self.check_env()
+        if done and done_flag < 0:
+            # collision or out range, action failed
+            self.robot_pos = self.last_pos.copy()
+            self.robot_angle = self.last_angle
+        self.laser_hits, self.laser_dists = self.laser_scan()
 
-        obs = self.config["map"]["obstacles"]
-        self.laser_hits, self.laser_dists = self.laser_scan(obs)
         self.step_cnt += 1
+        return done, done_flag
 
-    def laser_scan(self, obstacles):
+    def laser_scan(self):
+        obs = self.config["map"]["obstacles"]
         robot_pos = self.robot_pos
         robot_angle = self.robot_angle
         laser_hits = []
@@ -198,11 +151,11 @@ class Simu:
             for d in range(0, self.laser_range, 2):
                 x = robot_pos[0] + math.cos(rad) * d
                 y = robot_pos[1] - math.sin(rad) * d
-                if is_point_blocked([x, y], obstacles):
+                if check_blocked([x, y], 0, self.obs_polygons, self.obs_circles):
                     laser_hits.append((x, y))
                     laser_dists.append(d)
                     break
-                if self.check_outrange([x, y]):
+                if check_outrange([x, y], self.map_size):
                     laser_hits.append((x, y))
                     laser_dists.append(d)
                     break
@@ -215,66 +168,41 @@ class Simu:
         laser_dists += [self.laser_range] * max(self.laser_size - len(laser_dists), 0)
         laser_dists = laser_dists[:self.laser_size]
         return laser_hits, laser_dists
-    
-    def get_laser_distances(self):
-        return self.laser_dists
-    
-    def calc_goal_info(self):
-        """计算机器人到目标点的距离"""
-        robot_pos = self.robot_pos
-        goal_pos = self.goal_pos
-        dx = goal_pos[0] - robot_pos[0]
-        dy = goal_pos[1] - robot_pos[1]
-        angle = np.arctan2(dy, dx)
-        return dx, dy, angle
 
-    def get_done(self):
+    def check_env(self):
         done = False
         done_flag = 0
         if self.step_cnt > 3000:
             done = True
             done_flag = 0
-        if self.check_collision(self.robot_pos, self.robot_radius):
+        if check_blocked(self.robot_pos, self.robot_radius,
+                         self.obs_polygons, self.obs_circles):
             done = True
             done_flag = -1
-        elif self.check_outrange(self.robot_pos, self.robot_radius):
+        elif check_outrange(self.robot_pos, self.map_size, self.robot_radius):
             done = True
             done_flag = -2
-        elif self.check_goal(self.robot_pos, self.robot_radius, 
+        elif check_overlap(self.robot_pos, self.robot_radius, 
                             self.goal_pos, self.goal_radius):
-            self.reach_goal_cnt += 1
-            if self.reach_goal_cnt > 1:
-                done = True
-            else:
-                done_flag = 1
+            done = True
+            done_flag = 1
         return done, done_flag
 
-    def check_collision(self, pos, radius):
-        robot_shape = Point(pos).buffer(radius)
-        for poly in self.obs_polygons:
-            if robot_shape.intersects(Polygon(poly)):
-                return True
-        for circle in self.obs_circles:
-            dx = pos[0] - circle["pos"][0]
-            dy = pos[1] - circle["pos"][1]
-            distance = math.hypot(dx, dy)
-            if distance < radius + circle["radius"]:
-                return True
-        return False
+    def get_valid_pos(self, radius):
+        cnt = 0
+        while cnt < 10:
+            x = np.random.uniform(radius, self.map_size[0]-radius)
+            y = np.random.uniform(radius, self.map_size[1]-radius)
+            if check_blocked([x, y], radius, 
+                             self.obs_polygons, self.obs_circles):
+                cnt += 1
+            else:
+                return [x, y]
     
-    def check_outrange(self, pos, radius=0):
-        return not (
-            pos[0] > radius and pos[0] < self.map_size[0] - radius \
-            and pos[1] > radius and pos[1] < self.map_size[1] - radius
-        )
-
-    def check_goal(self, pos, pos_radius, goal_pos, goal_radius):
-        cx, cy = goal_pos
-        dist = math.sqrt((pos[0] - cx) ** 2 + (pos[1] - cy) ** 2)
-        return dist <= goal_radius + pos_radius
-    
-    def get_info(self):
-        return 0
+    def calc_goal_info(self):
+        dx = self.goal_pos[0] - self.robot_pos[0]
+        dy = self.goal_pos[1] - self.robot_pos[1]
+        return dx, dy
 
     def draw(self, screen):
         screen.fill((255, 255, 255))
@@ -312,30 +240,27 @@ class RobotEnv:
 
     def step(self, move_param):
         """ 执行一步机器人动作，并返回观察结果和是否完成 """
-        self.simu.update(move_param)
-        done, done_flag = self.simu.get_done()
+        done, done_flag = self.simu.update(move_param)
         reward = self.get_reward(done, done_flag)
-        info = self.simu.get_info()
         if done:
             self.reset()
         next_obs = self.get_obs()
-        return next_obs, reward, done, info
+        return next_obs, reward, done, done_flag
 
     def get_obs(self):
         """ 获取当前的环境观测 """
-        # 获取机器人位置和角度
+        # 机器人数据
         robot_angle = self.simu.robot_angle        
-        # 计算机器人和终点之间的差值
-        dx, dy, angle = self.simu.calc_goal_info()
+        dx, dy = self.simu.calc_goal_info()
         dist = np.hypot(dx, dy)
-    
-        # 将机器人角度从度转换为弧度
-        robot_angle_rad = np.deg2rad(robot_angle)
-        diff_angle = angle - robot_angle_rad
-        # 将角度归一化到 [-pi, pi]
-        rad_diff = np.arctan2(np.sin(diff_angle), np.cos(diff_angle))
-        
-        # 获取激光雷达数据并归一化
+        robot2goal_rad = np.arctan2(dy, dx)
+        # 角度数据
+        robot_rad = np.deg2rad(robot_angle)
+        rad_diff = robot2goal_rad - robot_rad
+        rad_diff = np.arctan2(np.sin(rad_diff), np.cos(rad_diff))
+        rad_sin = np.sin(rad_diff)
+        rad_cos = np.cos(rad_diff)
+        # 激光数据
         laser = np.array(self.simu.laser_dists) / self.simu.laser_range
         
         # 归一化相对位置和距离
@@ -344,8 +269,6 @@ class RobotEnv:
         dy /= map_size[1]  # 使用地图高度归一化
         dist /= np.hypot(map_size[0], map_size[1])  # 使用地图对角线长度归一化
         rad_diff /= np.pi  # 归一化到 [-1, 1]
-        rad_sin = np.sin(rad_diff)
-        rad_cos = np.cos(rad_diff)
         
         # 将所有观测组合成numpy数组
         obs = np.concatenate([
@@ -364,12 +287,11 @@ class RobotEnv:
                 return -10
             elif done_flag == -2: # Out of range
                 return -10
-
-        if done_flag == 1:  # Reached goal
-            return 100
+            elif done_flag == 1:
+                return 100
         
         # Distance-based reward
-        dx, dy, _ = self.simu.calc_goal_info()
+        dx, dy = self.simu.calc_goal_info()
         curr_dist = np.hypot(dx, dy)
         # Update minimum distance if we're closer than before
         if curr_dist < self.simu.min_dist_to_goal:
@@ -377,9 +299,11 @@ class RobotEnv:
             self.simu.min_dist_to_goal = curr_dist
             rewards += reward
 
-        # time penalty
-        time_penalty = -0.01
-        rewards += time_penalty
+        # stack penalty
+        last_pos = self.simu.last_pos
+        cur_pos = self.simu.robot_pos
+        move_dist = np.hypot(last_pos[0] - cur_pos[0], last_pos[1] - cur_pos[1])
+        rewards += int(move_dist < 2.0) * -0.01      
         
         return rewards
 

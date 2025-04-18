@@ -1,0 +1,41 @@
+import json
+import logging
+import time
+import torch
+from env import RobotEnv
+from collections import namedtuple
+from net import MultiDiscreteActor, Critic
+from policy import PPO
+
+
+env_config = 'configs/env_config.json'
+need_render = 1
+env = RobotEnv(env_config, render=need_render)
+
+model_path = 'saves/save_model_300000.pth'
+actor = MultiDiscreteActor(env.state_dim, env.action_dim)
+critic = Critic(env.state_dim)
+agent = PPO(actor, critic)
+agent.load_model(model_path)
+
+loop_cnt = 100
+for ep in range(loop_cnt):
+    obs = env.reset()
+    done = False
+    total_rews = 0
+    step = 0
+    while not done:
+        # act, _ = agent.act(obs, deterministic=True)
+        act, _ = agent.act(obs)
+        next_obs, rew, done, info = env.step(act)
+        obs = next_obs
+        total_rews += rew
+        step += 1
+        print(f"ep {ep}, obs {obs}, step {step}, act {act}, rew {rew}")
+        if need_render:
+            env.render()
+        if step > 300:
+            step = 0
+            env.reset()
+
+    print(f"ep {ep}, rew {total_rews}, step {step}")
