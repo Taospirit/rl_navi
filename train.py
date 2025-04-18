@@ -29,7 +29,7 @@ torch.cuda.manual_seed(train_seed)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
-env_config = 'configs/env_config.json'
+env_config = 'configs/env_config_1.json'
 need_render = 0
 env = RobotEnv(env_config, render=need_render)
 
@@ -75,3 +75,4 @@ while total_steps < max_timesteps:
         cnt += 1
         agent.update()
     logging.info(f'learn {cnt}, rews {rews}, roll step {step}, total step {total_steps}')
+env.close()

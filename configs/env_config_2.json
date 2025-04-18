@@ -1,0 +1,42 @@
+{
+    "map": {
+        "size": [800, 600],
+        "obstacles": {
+            "reset_mode": "rand",
+            "polygons": [
+                {
+                    "center": [200, 200],
+                    "width": 100,
+                    "height": 50,
+                    "rotation": 0
+                },
+                {
+                    "center": [600, 400],
+                    "width": 80,
+                    "height": 120,
+                    "rotation": 45
+                }
+            ],
+            "circles": [
+                {
+                    "pos": [400, 300],
+                    "radius": 50
+                }
+            ]
+        }
+    },
+    "robot": {
+        "pos": [100, 100],
+        "radius": 10,
+        "goal": {
+            "pos": [700, 500],
+            "radius": 15
+        },
+        "laser": {
+            "fov": 180,
+            "interval": 10,
+            "max_range": 200
+        },
+        "reset_mode": "rand"
+    }
+} 

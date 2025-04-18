@@ -3,7 +3,7 @@ import time
 import pygame
 from env import RobotEnv
 
-env_config = 'configs/env_config.json'
+env_config = 'configs/env_config_1.json'
 need_render = 1
 env = RobotEnv(env_config, render=need_render)
 
