@@ -1,3 +1,5 @@
+import os
+import os.path as osp
 import numpy as np
 import torch
 import torch.nn as nn
@@ -61,6 +63,12 @@ class PPO:
         self.critic_optim = optim.Adam(critic.parameters(), lr=v_lr)
 
     def save_model(self, path):
+        dir_path = osp.dirname(path)
+        if osp.exists(dir_path):
+            import shutil
+            shutil.rmtree(dir_path)
+        os.makedirs(dir_path)
+
         torch.save({
             'actor_state_dict': self.actor.state_dict(),
             'critic_state_dict': self.critic.state_dict(),
@@ -70,6 +78,8 @@ class PPO:
         print(f"模型已保存到 {path}")
 
     def load_model(self, path):
+        assert osp.exists(path), f"path not exits: {path}"
+        
         checkpoint = torch.load(path)
         self.actor.load_state_dict(checkpoint['actor_state_dict'])
         self.critic.load_state_dict(checkpoint['critic_state_dict'])

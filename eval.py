@@ -1,18 +1,12 @@
-import json
-import logging
-import time
-import torch
 from env import RobotEnv
-from collections import namedtuple
 from net import MultiDiscreteActor, Critic
 from policy import PPO
-
 
 env_config = 'configs/env_config.json'
 need_render = 1
 env = RobotEnv(env_config, render=need_render)
 
-model_path = 'saves/save_model_300000.pth'
+model_path = 'saves-0418-191948/save_model_20000.pth'
 actor = MultiDiscreteActor(env.state_dim, env.action_dim)
 critic = Critic(env.state_dim)
 agent = PPO(actor, critic)
@@ -34,7 +28,7 @@ for ep in range(loop_cnt):
         print(f"ep {ep}, obs {obs}, step {step}, act {act}, rew {rew}")
         if need_render:
             env.render()
-        if step > 300:
+        if step > 1000:
             step = 0
             env.reset()
 

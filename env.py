@@ -70,7 +70,7 @@ class Simu:
         # robot init
         self.robot_radius = config['robot']['radius']
         self.robot_pos = [config['robot']['pos'][0], config['robot']['pos'][1]]
-        self.robot_angle = 0
+        self.robot_deg = 0
         self.move_speed = 3
         self.rotate_speed = 5
         self.reset_mode = config['robot'].get('reset_mode', 'norm')
@@ -79,7 +79,7 @@ class Simu:
         self.laser_fov = laser_cfg['fov']
         self.laser_interval = laser_cfg['interval']
         self.laser_range = laser_cfg['max_range']
-        self.laser_size = int(self.laser_range / self.laser_interval) + 1
+        self.laser_size = int(self.laser_fov / self.laser_interval) + 1
         self.laser_dists = [self.laser_range for _ in range(self.laser_size)]
         # map info init 
         map_conf = config['map']
@@ -95,16 +95,16 @@ class Simu:
         dx, dy = self.calc_goal_info()
         self.min_dist_to_goal = np.hypot(dx, dy)
         self.last_pos = self.robot_pos
-        self.last_angle = self.robot_angle
+        self.last_angle = self.robot_deg
 
     def reset(self):
         if self.reset_mode == "rand":
             # self.robot_pos = self.get_valid_pos(self.robot_radius)
-            # self.robot_angle = random.uniform(-180, 180)
+            # self.robot_deg = random.uniform(-180, 180)
             self.goal_pos = self.get_valid_pos(self.goal_radius)
         else:
             self.robot_pos = list(self.config['robot']['pos'])
-            self.robot_angle = 0
+            self.robot_deg = 0
             self.goal_pos = self.config['robot']['goal']['pos']
 
         dx, dy = self.calc_goal_info()
@@ -115,13 +115,13 @@ class Simu:
     def update(self, move_param):
         assert len(move_param) == 2, f"move param only support [move, rotate]"
         self.last_pos = self.robot_pos.copy()
-        self.last_angle = self.robot_angle
+        self.last_angle = self.robot_deg
         act_map = lambda m, r: (m -1, r - 1)
         move, rotate = act_map(*move_param)
         move = max(move, 0)
 
-        self.robot_angle = (self.robot_angle + rotate * self.rotate_speed) % 360
-        rad = math.radians(self.robot_angle)
+        self.robot_deg = (self.robot_deg + rotate * self.rotate_speed) % 360
+        rad = np.deg2rad(self.robot_deg)
         dx = move * self.move_speed * math.cos(rad)
         dy = -1 * move * self.move_speed * math.sin(rad)
         self.robot_pos[0] += dx
@@ -131,7 +131,7 @@ class Simu:
         if done and done_flag < 0:
             # collision or out range, action failed
             self.robot_pos = self.last_pos.copy()
-            self.robot_angle = self.last_angle
+            self.robot_deg = self.last_angle
         self.laser_hits, self.laser_dists = self.laser_scan()
 
         self.step_cnt += 1
@@ -140,11 +140,11 @@ class Simu:
     def laser_scan(self):
         obs = self.config["map"]["obstacles"]
         robot_pos = self.robot_pos
-        robot_angle = self.robot_angle
+        robot_deg = self.robot_deg
         laser_hits = []
         laser_dists = []
-        start_angle = robot_angle - self.laser_fov / 2
-        end_angle = robot_angle + self.laser_fov / 2
+        start_angle = robot_deg - self.laser_fov / 2
+        end_angle = robot_deg + self.laser_fov / 2
 
         for deg in range(int(start_angle), int(end_angle) + 1, self.laser_interval):
             rad = math.radians(deg)
@@ -172,9 +172,6 @@ class Simu:
     def check_env(self):
         done = False
         done_flag = 0
-        if self.step_cnt > 3000:
-            done = True
-            done_flag = 0
         if check_blocked(self.robot_pos, self.robot_radius,
                          self.obs_polygons, self.obs_circles):
             done = True
@@ -249,33 +246,57 @@ class RobotEnv:
 
     def get_obs(self):
         """ 获取当前的环境观测 """
+        robot_pos = self.simu.robot_pos
+        robot_deg = self.simu.robot_deg
+        laser_dist = self.simu.laser_dists
+        ##### 转换坐标，由 y 轴向上变成 y 轴向下, 归一化到 -pi -> pi ####
+        robot_deg_norm = ((-robot_deg + 180) % 360) - 180
+        map_size = self.simu.map_size
         # 机器人数据
-        robot_angle = self.simu.robot_angle        
+        px, py = robot_pos  
         dx, dy = self.simu.calc_goal_info()
         dist = np.hypot(dx, dy)
-        robot2goal_rad = np.arctan2(dy, dx)
+        robot2goal_deg = np.rad2deg(np.arctan2(dy, dx))
         # 角度数据
-        robot_rad = np.deg2rad(robot_angle)
-        rad_diff = robot2goal_rad - robot_rad
+        deg_diff = robot2goal_deg - robot_deg_norm
+        rad_diff = np.deg2rad(deg_diff)
         rad_diff = np.arctan2(np.sin(rad_diff), np.cos(rad_diff))
+        robot_rad = np.deg2rad(robot_deg_norm)
         rad_sin = np.sin(rad_diff)
         rad_cos = np.cos(rad_diff)
+        # 激光数据，转换成从左数
+        laser_dist = laser_dist[::-1]
+
+        debug = False
+        if debug:
+            info_dict = {
+                "robot": robot_pos,
+                "goal": self.simu.goal_pos,
+                "deg": robot_deg_norm,
+                "deg2goal": robot2goal_deg.item(),
+                "deg_diff": np.rad2deg(rad_diff).item(),
+                "pos_diff": (dx, dy),
+                "pos_dist": dist.item(),
+                "laser_dist": laser_dist,
+            }
+            print(info_dict)
+
         # 激光数据
-        laser = np.array(self.simu.laser_dists) / self.simu.laser_range
-        
-        # 归一化相对位置和距离
-        map_size = self.simu.map_size
+        laser_feat = np.array(laser_dist) / self.simu.laser_range
+        # 归一化
+        px /= map_size[0]
+        py /= map_size[1]
         dx /= map_size[0]  # 使用地图宽度归一化
         dy /= map_size[1]  # 使用地图高度归一化
         dist /= np.hypot(map_size[0], map_size[1])  # 使用地图对角线长度归一化
         rad_diff /= np.pi  # 归一化到 [-1, 1]
+        robot_rad /= np.pi
         
-        # 将所有观测组合成numpy数组
         obs = np.concatenate([
-            laser,                       # laser readings (n) [0,1]
-            [dx, dy],                    # dx, dy (2) [-1,1]
-            [dist],                      # distance to goal (1) [0,1]
-            [rad_diff, rad_sin, rad_cos],                # angle difference (1) [-1,1]
+            laser_feat,
+            [px, py, dx, dy],
+            [dist],
+            [robot_rad, rad_diff, rad_sin, rad_cos],
         ])
         return obs
 
@@ -300,12 +321,24 @@ class RobotEnv:
             rewards += reward
 
         # stack penalty
+        stack_calc_dist = 5.0
+        move_thr = 2.0
         last_pos = self.simu.last_pos
         cur_pos = self.simu.robot_pos
         move_dist = np.hypot(last_pos[0] - cur_pos[0], last_pos[1] - cur_pos[1])
-        rewards += int(move_dist < 2.0) * -0.01      
+        is_stack = curr_dist > stack_calc_dist and move_dist < move_thr
+        rewards += int(is_stack) * -0.01      
         
         return rewards
+    
+    def get_rand_obs(self):
+        return np.random.uniform(0, 1, self.state_dim)
+    
+    def get_rand_act(self):
+        return [np.random.randint(0, n) for n in self.action_dim]
+    
+    def get_step_cnt(self):
+        return self.simu.step_cnt
 
     def render(self):
         """ 渲染环境状态 """

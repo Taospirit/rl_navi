@@ -1,11 +1,25 @@
-import json
-from env import RobotEnv
+import os
 import time
 import numpy as np
+import logging
 import torch
+from datetime import datetime
 from collections import namedtuple
 from net import MultiDiscreteActor, Critic
 from policy import PPO
+from env import RobotEnv
+
+now = datetime.now()
+time_format = now.strftime("%m%d-%H%M%S")
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s | %(levelname)s | %(message)s',
+    handlers=[
+        logging.FileHandler(f"train-{time_format}.log"),  # 保存到文件
+        logging.StreamHandler()          # 同时输出到控制台
+    ]
+)
+save_dir = f'saves-{time_format}'
 
 
 train_seed = 42
@@ -23,12 +37,11 @@ actor = MultiDiscreteActor(env.state_dim, env.action_dim)
 critic = Critic(env.state_dim)
 agent = PPO(actor, critic)
 
-live_time = []
 total_steps = 0
 cnt = 0
 obs = env.reset()
+max_len = agent.data_size()
 while total_steps < max_timesteps:
-    max_len = agent.data_size()
     rews = 0
     step = 0
     for _ in range(max_len):
@@ -49,13 +62,16 @@ while total_steps < max_timesteps:
         step += 1
 
         if total_steps % 10000 == 0:
-            save_path = f'saves/save_model_{total_steps}.pth'
+            save_path = f'{save_dir}/save_model_{total_steps}.pth'
             agent.save_model(save_path)
-        if done:
-            break
+
+        if env.get_step_cnt() > 5000:
+            obs = env.reset()
         if need_render:
             env.render()
+        if done:
+            break
     if agent.ready():
+        cnt += 1
         agent.update()
-    cnt += 1
-    print(f'learn {cnt}, rews {rews}, step {step}')
+    logging.info(f'learn {cnt}, rews {rews}, roll step {step}, total step {total_steps}')
