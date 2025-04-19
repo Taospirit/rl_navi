@@ -51,7 +51,8 @@
                     "pos": [250, 350],
                     "radius": 20
                 }
-            ]
+            ],
+            "reset_mode": "rand"
         }
     },
     "robot": {

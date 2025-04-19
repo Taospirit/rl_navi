@@ -31,8 +31,8 @@ torch.cuda.manual_seed(train_seed)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
-env_config = 'configs/env_config_1.json'
 need_render = 0
+env_config = 'configs/env_config_1.json'
 env = RobotEnv(env_config, render=need_render)
 
 actor = MultiDiscreteActor(env.state_dim, env.action_dim)
@@ -47,7 +47,8 @@ while total_steps < max_timesteps:
     rews = 0
     step = 0
     for _ in range(max_len):
-        act, log_prob = agent.act(obs)
+        action_mask = env.get_action_mask()
+        act, log_prob = agent.act(obs, action_mask)
         next_obs, rew, done, info = env.step(act)
         total_steps += 1
         agent.store({
@@ -56,7 +57,8 @@ while total_steps < max_timesteps:
             "rew": rew,
             "next_obs": next_obs,
             "done": done,
-            "log_prob": log_prob
+            "log_prob": log_prob,
+            "act_mask": action_mask
         })
         obs = next_obs
         # print(obs, act, rew, done, log_prob)

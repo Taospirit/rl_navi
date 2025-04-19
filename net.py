@@ -64,10 +64,20 @@ class MultiDiscreteActor(nn.Module):
         x = self.shared(x)
         logits = [head(x) for head in self.heads]
         return logits
-
-    def act(self, x, deterministic=False):
+    
+    def get_dists(self, x, action_mask=None):
+        # obs shape: [batch_size, obs_dim] -> [bs, 28]
+        # logits shape: [action_dim, batch_size, action_num] -> [2, bs, 3]
+        # action_mask shape: [batch_size, action_dim, action_num] -> [bs, 2, 3]
         logits = self.forward(x)
+        if action_mask is not None:
+            logits = [torch.where(mask[:, :l.shape[-1]], l, torch.tensor(-float('inf')).to(l.device)) 
+                        for l, mask in zip(logits, action_mask.transpose(0, 1))]
         dists = [Categorical(logits=logit) for logit in logits]
+        return dists
+
+    def act(self, x, action_mask=None, deterministic=False):
+        dists = self.get_dists(x, action_mask)        
         actions = [dist.probs.argmax(-1) if deterministic else dist.sample() for dist in dists]
         log_probs = [dist.log_prob(act) for dist, act in zip(dists, actions)]
         return torch.stack(actions, dim=-1), torch.stack(log_probs, dim=-1)

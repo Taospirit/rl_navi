@@ -90,10 +90,12 @@ class PPO:
     def store(self, dict):
         self.buffer.append(**dict)
 
-    def act(self, obs, deterministic=False):
+    def act(self, obs, action_mask=None, deterministic=False):
         obs = torch.tensor(obs, dtype=torch.float32).unsqueeze(0)
+        if action_mask is not None:
+            action_mask = torch.tensor(action_mask, dtype=torch.bool).unsqueeze(0)
         with torch.no_grad():
-            actions, log_probs = self.actor.act(obs, deterministic)
+            actions, log_probs = self.actor.act(obs, action_mask, deterministic)
         return actions.squeeze(0).numpy(), log_probs.squeeze(0).numpy()
 
     def update(self):
@@ -106,6 +108,7 @@ class PPO:
         next_obs = torch.tensor(mem['next_obs'][-1], dtype=torch.float32).unsqueeze(0)
         dones = np.asarray(mem['done'])
         old_log_probs = torch.tensor(mem['log_prob'], dtype=torch.float32)
+        act_mask = torch.tensor(mem['act_mask'], dtype=torch.bool)
 
         with torch.no_grad():
             vals = self.critic(obs).numpy()
@@ -115,15 +118,14 @@ class PPO:
             vals = torch.tensor(vals, dtype=torch.float32)
             returns = advs + vals
 
-        dataset = TensorDataset(obs, acts, old_log_probs, advs, returns)
+        dataset = TensorDataset(obs, acts, old_log_probs, advs, returns, act_mask)
         loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
 
         for _ in range(self.epochs):
             for batch in loader:
-                b_obs, b_acts, b_old_log_probs, b_advs, b_returns = batch
-                logits = self.actor(b_obs)
-                dists = [Categorical(logits=l) for l in logits]
-
+                b_obs, b_acts, b_old_log_probs, b_advs, b_returns, b_masks = batch
+                
+                dists = self.actor.get_dists(b_obs, b_masks)
                 new_log_probs = torch.stack(
                     [dist.log_prob(b_acts[:, i]) for i, dist in enumerate(dists)], dim=-1
                 )

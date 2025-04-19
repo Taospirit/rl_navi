@@ -171,8 +171,8 @@ class Simu:
     def reset(self):
         """重置环境"""
         if self.reset_mode == "rand":
-            # self.robot_pos = self.get_valid_pos(self.robot_radius)
-            # self.robot_deg = random.uniform(-180, 180)
+            self.robot_pos = self.get_valid_pos(self.robot_radius)
+            self.robot_deg = random.uniform(-180, 180)
             self.goal_pos = self.get_valid_pos(self.goal_radius)
         else:
             self.robot_pos = list(self.config['robot']['pos'])
@@ -180,6 +180,7 @@ class Simu:
             self.goal_pos = self.config['robot']['goal']['pos']
         
         self.update_obstacles()
+        self.laser_hits, self.laser_dists = self.laser_scan()
         self.min_dist_to_goal = np.hypot(*self.calc_goal_info())
         self.reach_goal_cnt = 0
         self.step_cnt = 0
@@ -197,7 +198,6 @@ class Simu:
         
         # 计算移动
         move, rotate = (move_param[0]-1, move_param[1]-1)
-        move = max(move, 0)
         self.robot_deg = (self.robot_deg + rotate * self.rotate_speed) % 360
         
         # 更新位置
@@ -364,6 +364,18 @@ class RobotEnv:
             [robot_rad, rad_diff, rad_sin, rad_cos],
         ])
         return obs
+    
+    def get_action_mask(self):
+        """获取动作掩码，默认为全1"""
+        masks = [np.ones(dim, dtype=bool) for dim in self.action_dim]
+        # move mask, ban backward
+        masks[0][0] = 0
+
+        max_len = max(len(x) for x in masks)
+        padded_masks = np.zeros((len(masks), max_len), dtype=bool)
+        for i, m in enumerate(masks):
+            padded_masks[i, :len(m)] = m
+        return padded_masks
 
     def get_reward(self, done, done_flag):
         rewards = 0
@@ -397,10 +409,10 @@ class RobotEnv:
         return rewards
     
     def get_rand_obs(self):
-        return np.random.uniform(0, 1, self.state_dim)
+        return np.random.rand(self.state_dim)
     
     def get_rand_act(self):
-        return [np.random.randint(0, n) for n in self.action_dim]
+        return np.random.randint(0, self.action_dim)
     
     def get_step_cnt(self):
         return self.simu.step_cnt
