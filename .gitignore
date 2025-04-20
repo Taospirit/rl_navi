@@ -1,2 +1,5 @@
 __pycache__
 save*/
+
+*.mp4
+*.pth

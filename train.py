@@ -25,7 +25,7 @@ logging.basicConfig(
 logging.info(f'log file: {log_save_file}, save dir: {model_save_dir}')
 
 train_seed = 42
-max_timesteps = int(1e8)
+max_timesteps = int(1e6)
 torch.manual_seed(train_seed)
 torch.cuda.manual_seed(train_seed)
 torch.backends.cudnn.deterministic = True
