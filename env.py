@@ -367,7 +367,7 @@ class RobotEnv:
     
     def get_action_mask(self):
         """获取动作掩码，默认为全1"""
-        masks = [np.ones(dim, dtype=bool) for dim in self.action_dim]
+        masks = np.ones(self.action_dim, dtype=bool)
         # move mask, ban backward
         masks[0][0] = 0
 
@@ -458,4 +458,4 @@ class RobotEnv:
     
     @property
     def action_dim(self):
-        return [3, 3]
+        return np.array([3, 3])
