@@ -1,0 +1,60 @@
+# 地图配置
+map:
+  # 地图尺寸 [宽度, 高度]
+  size: [800, 600]
+  
+  # 障碍物配置
+  obstacles:
+    # 多边形障碍物
+    polygons:
+      - center: [200, 200]  # 中心点坐标
+        width: 100         # 宽度
+        height: 50         # 高度
+        rotation: 0        # 旋转角度（度）
+      - center: [600, 400]
+        width: 80
+        height: 120
+        rotation: 45
+      - center: [300, 100]
+        width: 40
+        height: 30
+        rotation: 30
+      - center: [500, 200]
+        width: 50
+        height: 40
+        rotation: -15
+      - center: [400, 500]
+        width: 60
+        height: 40
+        rotation: 60
+    
+    # 圆形障碍物
+    circles:
+      - pos: [400, 300]   # 圆心坐标
+        radius: 50        # 半径
+      - pos: [150, 450]
+        radius: 30
+      - pos: [650, 150]
+        radius: 25
+      - pos: [250, 350]
+        radius: 20
+    
+    reset_mode: "rand"    # 障碍物重置模式
+
+# 机器人配置
+robot:
+  pos: [100, 100]        # 初始位置
+  radius: 10             # 机器人半径
+  
+  # 目标点配置
+  goal:
+    pos: [700, 500]      # 目标点坐标
+    radius: 15           # 目标点半径
+  
+  # 激光雷达配置
+  laser:
+    fov: 180             # 激光雷达视场角（度）
+    interval: 10         # 激光束间隔（度）
+    max_range: 200       # 最大探测距离
+  
+  reset_mode: "rand"     # 重置模式：随机 

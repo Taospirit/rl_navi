@@ -2,19 +2,13 @@ import pygame
 import math
 import numpy as np
 import random
-import json
-import os
 import cv2
 from shapely.geometry import Point, Polygon
+from core.utils import load_config
 
 # -------------------------------
 # 工具函数
 # -------------------------------
-def load_config(config_path):
-    """加载配置文件"""
-    with open(config_path) as f:
-        return json.load(f)
-
 def center_to_polygon(center, width, height, rotation=0):
     """将中心点和长宽转换为多边形顶点"""
     half_w, half_h = width/2, height/2
@@ -76,30 +70,32 @@ class Simu:
     def __init__(self, config):
         # 初始化配置
         self.config = config
-        self.map_size = config['map']['size']
-        self.original_obstacles = config['map']['obstacles']
-        self.obstacles_reset_mode = self.original_obstacles.get('reset_mode', 'norm')
+        self.map_size = config.map.size 
+        self.original_obstacles = config.map.obstacles
+        self.obstacles_reset_mode = config.map.obstacles.reset_mode \
+            if hasattr(config.map.obstacles, 'reset_mode') else 'norm'
         
         # 初始化机器人
-        robot_cfg = config['robot']
-        self.robot_radius = robot_cfg['radius']
-        self.robot_pos = list(robot_cfg['pos'])
+        robot_cfg = config.robot
+        self.robot_radius = robot_cfg.radius
+        self.robot_pos = list(robot_cfg.pos)
         self.robot_deg = 0
         self.move_speed = 3
         self.rotate_speed = 5
-        self.reset_mode = robot_cfg.get('reset_mode', 'norm')
+        self.reset_mode = robot_cfg.reset_mode \
+            if hasattr(robot_cfg, 'reset_mode') else 'norm'
         
         # 初始化激光
-        laser_cfg = robot_cfg['laser']
-        self.laser_fov = laser_cfg['fov']
-        self.laser_interval = laser_cfg['interval']
-        self.laser_range = laser_cfg['max_range']
+        laser_cfg = robot_cfg.laser
+        self.laser_fov = laser_cfg.fov
+        self.laser_interval = laser_cfg.interval
+        self.laser_range = laser_cfg.max_range
         self.laser_size = int(self.laser_fov / self.laser_interval) + 1
         self.laser_dists = [self.laser_range] * self.laser_size
         
         # 初始化目标
-        self.goal_pos = robot_cfg['goal']['pos']
-        self.goal_radius = robot_cfg['goal']['radius']
+        self.goal_pos = robot_cfg.goal.pos
+        self.goal_radius = robot_cfg.goal.radius
         
         # 初始化状态
         self.reach_goal_cnt = 0
@@ -117,33 +113,35 @@ class Simu:
         """更新障碍物位置和旋转"""
         # 更新多边形障碍物
         self.obs_polygons = []
-        for poly in self.original_obstacles['polygons']:
+        for poly in self.original_obstacles.polygons:
             if self.obstacles_reset_mode == "rand":
-                width, height = poly['width'], poly['height']
+                width, height = poly.width, poly.height
                 min_x, max_x = width/2, self.map_size[0]-width/2
                 min_y, max_y = height/2, self.map_size[1]-height/2
                 center = [random.uniform(min_x, max_x), 
                          random.uniform(min_y, max_y)]
                 rotation = random.uniform(0, 360)
             else:
-                center, rotation = poly['center'], poly.get('rotation', 0)
-                width, height = poly['width'], poly['height']
+                center = poly.center
+                rotation = poly.rotation if hasattr(poly, 'rotation') else 0
+                width = poly.width
+                height = poly.height
             
             self.obs_polygons.append(
                 center_to_polygon(center, width, height, rotation))
         
         # 更新圆形障碍物
         self.obs_circles = []
-        for circle in self.original_obstacles['circles']:
+        for circle in self.original_obstacles.circles:
             if self.obstacles_reset_mode == "rand":
-                radius = circle['radius']
+                radius = circle.radius
                 min_x, max_x = radius, self.map_size[0]-radius
                 min_y, max_y = radius, self.map_size[1]-radius
                 pos = [random.uniform(min_x, max_x), 
                       random.uniform(min_y, max_y)]
             else:
-                pos = circle['pos']
-                radius = circle['radius']
+                pos = circle.pos
+                radius = circle.radius
             
             self.obs_circles.append({"pos": pos, "radius": radius})
 
@@ -175,9 +173,9 @@ class Simu:
             self.robot_deg = random.uniform(-180, 180)
             self.goal_pos = self.get_valid_pos(self.goal_radius)
         else:
-            self.robot_pos = list(self.config['robot']['pos'])
+            self.robot_pos = list(self.config.robot.pos)
             self.robot_deg = 0
-            self.goal_pos = self.config['robot']['goal']['pos']
+            self.goal_pos = self.config.robot.goal.pos
         
         self.update_obstacles()
         self.laser_hits, self.laser_dists = self.laser_scan()
@@ -282,14 +280,14 @@ class Simu:
 
 
 class RobotEnv:
-    def __init__(self, config, render=False, save_video=None):
+    def __init__(self, config_path, render=False, save_video=None):
         pygame.init()
-        config = load_config(config)
+        config = load_config(config_path)
         self.simu = Simu(config)
         self.need_render = render
         self.save_video = save_video
         if self.need_render:
-            self.screen = pygame.display.set_mode(config['map']['size'])
+            self.screen = pygame.display.set_mode(self.simu.map_size)
             self.clock = pygame.time.Clock()
             self.frames = []  # 用于存储视频帧
             self.frame_skip = 2  # 每2帧保存一次，降低帧率

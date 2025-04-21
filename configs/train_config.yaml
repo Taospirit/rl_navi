@@ -1,25 +1,32 @@
-train: true
-eval: false
-train_seed: 42
-hidden_dim: 64
-max_timesteps: 100000
-eval_interval: 5000
-save_interval: 50000
-save_dir: save
-
-env:
-  name: LunarLander-v3
+train:
   seed: 42
-  render: false
+  max_timesteps: 1000000
+  save_interval: 10000
+  save_root: "saves"
+  need_render: 0
 
-algo:
-  name: ppo
-  lr: 0.0001
-  clip_ratio: 0.2
+network:
+  hidden_size: 128
+
+ppo:
+  buffer_size: 2048
   gamma: 0.99
-  lamda: 0.95
-  entropy_coef: 0.0
-  value_coef: 0.5
+  lam: 0.95
+  pi_lr: 0.0003
+  v_lr: 0.001
+  clip_ratio: 0.2
   epochs: 10
   batch_size: 64
-  buffer_size: 2048
+  entropy_coef: 0.0
+  value_coef: 0.5
+
+sac:
+  buffer_size: 1000000
+  gamma: 0.99
+  tau: 0.005
+  actor_lr: 0.0003
+  critic_lr: 0.0003
+  alpha_lr: 0.0003
+  batch_size: 256
+  target_entropy: null
+
